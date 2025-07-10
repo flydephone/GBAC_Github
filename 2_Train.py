@@ -8,12 +8,11 @@ import torch
 from torch import nn
 from torch.utils.data import DataLoader, Dataset
 import torch.optim as optim
-
 import torch.nn.functional as F
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import r2_score, mean_squared_error
 
-
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 def to_np(tensor):
     return tensor.clone().data.cpu().numpy()
 
@@ -67,7 +66,6 @@ class MyDataSet(Dataset):
     def __len__(self):
         return len(self.X)
 
-
 class Mymodel(nn.Module):
     def __init__(self, env_feature_size, genetic_feature_size, env_embedding_dim=32, gen_embedding_dim=10):
         super(Mymodel, self).__init__()
@@ -95,16 +93,13 @@ class Mymodel(nn.Module):
         x = self.fc3(x)
         return x
 
-
 if __name__ == "__main__":
     # %% Load data
     with open("Formated_Genotypes.pickle", 'rb') as f:
         genotypes = pickle.load(f)
     with open("Formated_Environment.pickle", 'rb') as f:
         environments = pickle.load(f)
-
     genotypes.index.name = 'Hybrid'
-
     
     tra_phenotypes = pd.read_csv('Phenotypes.csv')
     tes_phenotypes = pd.read_csv('Hybrids_to_be_predicted.csv')
@@ -113,9 +108,7 @@ if __name__ == "__main__":
     tra_phenotypes.rename(columns={'Trait_2': 'Moisture'}, inplace=True)
     tes_phenotypes.rename(columns={'Trait_1': 'Yield'}, inplace=True)
     tes_phenotypes.rename(columns={'Trait_2': 'Moisture'}, inplace=True)
-    
 
-    
     # %% Dataset split
     data_tra, data_val = utils.split_by_environment(tra_phenotypes, split_col='Environment', train_ratio=0.7, seed=0)
     data_tes = tes_phenotypes
@@ -133,21 +126,31 @@ if __name__ == "__main__":
     val_set = MyDataSet(X_val, Y_val, feature_G, feature_E, scaler_E=tra_set.scaler_E, scaler_Y=tra_set.scaler_Y)
     val_DataLoader = DataLoader(val_set, batch_size=batch_size, shuffle=False)
 
+    # %% ============== GPU/CPU Device Setup ==============
+    # 1. Set the device to a GPU if available, otherwise use the CPU
+    
+    print(f"Using device: {device}")
+    
     # %% Model and optimizer define
-    EPOCHS = 10
-    BATCH_SIZE = 16
+    EPOCHS = 20
     LEARNING_RATE = 0.001
     e_size = len(feature_E.columns)
     g_size = len(feature_G.columns)
-    model = Mymodel(env_feature_size=e_size, genetic_feature_size=g_size)
+    model = Mymodel(env_feature_size=e_size, genetic_feature_size=g_size, env_embedding_dim=16, gen_embedding_dim=128)
+    model.to(device)
+    
     optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
-
     
     # %% Training
     for epoch in range(EPOCHS):
         model.train()
         running_loss = 0.0
         for env_batch, genetic_batch, target_batch in tra_DataLoader:
+            # 3. Move data batches to the selected device
+            env_batch = env_batch.to(device)
+            genetic_batch = genetic_batch.to(device)
+            target_batch = target_batch.to(device)
+
             optimizer.zero_grad()
             outputs = model(env_batch, genetic_batch)
             mask = ~torch.isnan(target_batch)
@@ -162,6 +165,11 @@ if __name__ == "__main__":
         val_loss = 0.0
         with torch.no_grad():
             for env_batch, genetic_batch, target_batch in val_DataLoader:
+                # 4. Move validation data batches to the selected device
+                env_batch = env_batch.to(device)
+                genetic_batch = genetic_batch.to(device)
+                target_batch = target_batch.to(device)
+
                 outputs = model(env_batch, genetic_batch)
                 mask = ~torch.isnan(target_batch)
                 loss = F.mse_loss(outputs[mask], target_batch[mask])
@@ -179,6 +187,11 @@ if __name__ == "__main__":
     all_targets_scaled = []
     with torch.no_grad():
         for env_batch, genetic_batch, target_batch in val_DataLoader:
+            # 5. Move data to device for final prediction run
+            env_batch = env_batch.to(device)
+            genetic_batch = genetic_batch.to(device)
+            target_batch = target_batch.to(device)
+            
             outputs = model(env_batch, genetic_batch)
             all_predictions_scaled.append(outputs)
             all_targets_scaled.append(target_batch)
@@ -187,8 +200,9 @@ if __name__ == "__main__":
     all_targets_scaled = torch.cat(all_targets_scaled, dim=0)
 
     # %% Inverse transform to original scale
-    predictions_original = tra_set.scaler_Y.inverse_transform(all_predictions_scaled.numpy())
-    targets_original = tra_set.scaler_Y.inverse_transform(all_targets_scaled.numpy())
+    # 6. Move tensors to CPU before converting to NumPy
+    predictions_original = tra_set.scaler_Y.inverse_transform(all_predictions_scaled.cpu().numpy())
+    targets_original = tra_set.scaler_Y.inverse_transform(all_targets_scaled.cpu().numpy())
 
     # %% Separate traits
     yield_preds = predictions_original[:, 0]
