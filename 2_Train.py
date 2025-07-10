@@ -4,22 +4,13 @@ import matplotlib.pyplot as plt
 import pickle
 import utils
 
-import pandas as pd
-import matplotlib.pyplot as plt
-import numpy as np
 import torch
 from torch import nn
-from torch.autograd import Variable
-from torch.nn import Parameter
 from torch.utils.data import DataLoader, Dataset
-from numpy.random import default_rng
-import random
-import torch.nn.init as init
 import torch.optim as optim
 
 import torch.nn.functional as F
-import utils
-from sklearn.preprocessing import StandardScaler, MinMaxScaler
+from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import r2_score, mean_squared_error
 
 
@@ -100,7 +91,6 @@ class Mymodel(nn.Module):
         combined = torch.cat((g_embedded, e_embedded), dim=1)
         
         x = F.relu(self.fc1(combined))
-        a = to_np(e_embedded)
         x = F.relu(self.fc2(x))
         x = self.fc3(x)
         return x
@@ -127,7 +117,7 @@ if __name__ == "__main__":
 
     
     # %% Dataset split
-    data_tra, data_val = utils.split_by_environment(tra_phenotypes, split_col='Environment', train_ratio=0.7, seed=42)
+    data_tra, data_val = utils.split_by_environment(tra_phenotypes, split_col='Environment', train_ratio=0.7, seed=0)
     data_tes = tes_phenotypes
     
     X_tra, Y_tra = data_tra[['Environment', 'Hybrid']].values, data_tra[['Yield', 'Moisture']].values
