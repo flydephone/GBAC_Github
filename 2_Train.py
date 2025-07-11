@@ -2,6 +2,7 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import pickle
+from prettytable import PrettyTable
 import utils
 
 import torch
@@ -16,6 +17,24 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 def to_np(tensor):
     return tensor.clone().data.cpu().numpy()
 
+def print_model_parameters(model):
+    """
+    This function plot model structure and number of parameters in model
+    """
+    print(model)
+    table = PrettyTable(["Modules", "Parameters"])
+    total_params = 0
+    for name, parameter in model.named_parameters():
+
+        if not parameter.requires_grad:
+            continue
+        param = parameter.numel()
+        table.add_row([name, param])
+        total_params += param
+
+    print(table)
+    print(f"Total Trainable Params: {total_params}")
+    return total_params
 class MyDataSet(Dataset):
     """
     Custom PyTorch Dataset that standardizes features (E) and targets (Y),
@@ -110,7 +129,7 @@ if __name__ == "__main__":
     tes_phenotypes.rename(columns={'Trait_2': 'Moisture'}, inplace=True)
 
     # %% Dataset split
-    data_tra, data_val = utils.split_by_group(tra_phenotypes, split_col=('Environment','Hybrid'), train_ratio=0.7, seed=0)
+    data_tra, data_val = utils.split_by_group(tra_phenotypes, split_col='Environment', train_ratio=0.7, seed=0)
     data_tes = tes_phenotypes
     
     X_tra, Y_tra = data_tra[['Environment', 'Hybrid']].values, data_tra[['Yield', 'Moisture']].values
@@ -138,6 +157,7 @@ if __name__ == "__main__":
     g_size = len(feature_G.columns)
     model = Mymodel(env_feature_size=e_size, genetic_feature_size=g_size, env_embedding_dim=16, gen_embedding_dim=128)
     model.to(device)
+    print_model_parameters(model)
     
     optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
     
