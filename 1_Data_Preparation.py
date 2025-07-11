@@ -201,7 +201,7 @@ plt.title('Correlation Matrix of Environmental Variables')
 # %% a demo to show splitting dataset and visualize
 print("Splitting training data into Train and Validation sets...")
 # Create the new dataframes based on the environment split
-data_tra, data_val = utils.split_by_environment(tra_phenotypes, split_col='Environment', train_ratio=0.7, seed=42)
+data_tra, data_val = utils.split_by_group(tra_phenotypes, split_col=('Environment','Hybrid'), train_ratio=0.7, seed=42)
 data_tes = tes_phenotypes
 
 tra_locations = pd.crosstab(data_tra['Hybrid'], data_tra['Environment']).reindex(index=all_hybrids, columns=all_environments, fill_value=0) > 0

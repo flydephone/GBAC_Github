@@ -110,7 +110,7 @@ if __name__ == "__main__":
     tes_phenotypes.rename(columns={'Trait_2': 'Moisture'}, inplace=True)
 
     # %% Dataset split
-    data_tra, data_val = utils.split_by_environment(tra_phenotypes, split_col='Environment', train_ratio=0.7, seed=0)
+    data_tra, data_val = utils.split_by_group(tra_phenotypes, split_col=('Environment','Hybrid'), train_ratio=0.7, seed=0)
     data_tes = tes_phenotypes
     
     X_tra, Y_tra = data_tra[['Environment', 'Hybrid']].values, data_tra[['Yield', 'Moisture']].values

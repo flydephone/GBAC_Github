@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
-
+from typing import Union, Tuple
+import random
 def encode_with_intermediate_map(df: pd.DataFrame) -> pd.DataFrame:
     """
     Encodes a SNP DataFrame using the user's proposed two-step strategy.
@@ -96,28 +97,65 @@ def get_overlap_partitions(*datasets):
 
     return partitions
 
-def split_by_environment(df, split_col='Environment', train_ratio=0.7, seed=42):
+def split_by_group(df, split_col:Union[str, Tuple[str, str]]= 'Environment', train_ratio=0.7, seed=42):
     """
     Splits a DataFrame into training and validation sets based on unique values in a specified column.
+    parameter:
+        df: phenotype dataframe
+        split_col: split the df into train and validation based on this col(s)
+        train_ratio: percentage of samples include in training. the actual training size will be smaller if split_col
+            is Tuple, because some sample will be drop to avoid overlaps.
     Returns:
         tuple: A tuple containing two DataFrames: (train_df, val_df).
     """
+    if isinstance(split_col, tuple):
+        group1, group2 = split_col
 
-    unique_envs = df[split_col].unique()
-    np.random.seed(seed)
-    np.random.shuffle(unique_envs)
+        # First split based on group1 (e.g., Environment)
+        unique_group1 = df[group1].unique()
+        np.random.shuffle(unique_group1)
 
-    train_count = int(len(unique_envs) * train_ratio)
+        train_size_group1 = int(len(unique_group1) * train_ratio)
+        train_group1 = set(unique_group1[:train_size_group1])
+        val_group1 = set(unique_group1[train_size_group1:])
 
-    
-    # Select the environments for each set
-    train_envs = set(unique_envs[:train_count])
-    val_envs = set(unique_envs[train_count : ])
-    
-    # Create the new DataFrames based on the environment split
-    train_df = df[df[split_col].isin(train_envs)].copy()
-    val_df = df[df[split_col].isin(val_envs)].copy()
+        # Then split based on group2 (e.g., Hybrid)
+        unique_group2 = df[group2].unique().tolist()
+        random.shuffle(unique_group2)
 
-    print(f"Training environments: {len(train_envs)} ({len(train_df)} rows)")
-    print(f"Validation environments: {len(val_envs)} ({len(val_df)} rows)")
+        train_size_g2 = int(len(unique_group2) * train_ratio)
+        train_group2 = set(unique_group2[:train_size_g2])
+        val_group2 = set(unique_group2[train_size_g2:])
+
+        # Final splits: keep only samples that belong to both train_group1 AND train_group2
+        train_df = df[df[group1].isin(train_group1) & df[group2].isin(train_group2)].copy()
+        val_df = df[df[group1].isin(val_group1) & df[group2].isin(val_group2)].copy()
+
+        # Assert no overlap
+        assert set(train_df.index).isdisjoint(val_df.index)
+        assert train_group1.isdisjoint(val_group1)
+        assert train_group2.isdisjoint(val_group2)
+
+        print(f"Training: {len(train_df)} rows | {group1}: {len(train_group1)}, {group2}: {len(train_group2)}")
+        print(f"Validation: {len(val_df)} rows | {group1}: {len(val_group1)}, {group2}: {len(val_group2)}")
+
+        return train_df, val_df
+
+    else:
+        unique_envs = df[split_col].unique()
+        np.random.seed(seed)
+        np.random.shuffle(unique_envs)
+
+        train_count = int(len(unique_envs) * train_ratio)
+
+        # Select the environments for each set
+        train_envs = set(unique_envs[:train_count])
+        val_envs = set(unique_envs[train_count:])
+
+        # Create the new DataFrames based on the environment split
+        train_df = df[df[split_col].isin(train_envs)].copy()
+        val_df = df[df[split_col].isin(val_envs)].copy()
+
+        print(f"Training environments: {len(train_envs)} ({len(train_df)} rows)")
+        print(f"Validation environments: {len(val_envs)} ({len(val_df)} rows)")
     return train_df, val_df
